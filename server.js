@@ -449,7 +449,9 @@ async function makeStructuredSummary({ symbol, quarter, transcriptText }) {
 
         type: "json_schema",
 
-        json_schema: jsonSchema
+        name: jsonSchema.name,
+
+        schema: jsonSchema.schema
 
       }
 
