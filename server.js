@@ -749,6 +749,8 @@ app.get("/summary", requireActionKey, async (req, res) => {
 
 let transcriptText = pluckTranscriptText(av);
 
+transcriptText = String(transcriptText || "");    
+
 let transcriptSource = "alphavantage";    
 
 
