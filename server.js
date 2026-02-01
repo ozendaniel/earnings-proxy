@@ -802,6 +802,8 @@ transcriptSource = "uti_ir_pdf";
 
 }
 
+}
+
   if (!isUsableTranscriptText(transcriptText)) {
 
   return res.status(404).json({ error: "Transcript not found or unusable." });
