@@ -2,6 +2,10 @@ import express from "express";
 
 import OpenAI from "openai";
 
+import pdfParse from "pdf-parse";
+
+import * as cheerio from "cheerio";
+
 
 
 const app = express();
@@ -148,7 +152,181 @@ function pluckTranscriptText(avPayload) {
 
 }
 
+// ---- UTI IR fallback (automatic) ----
 
+const UTI_QUARTERLY_REPORTS_URL = "https://investor.uti.edu/quarterly-reports";
+
+
+
+function quarterToUtiLabels(quarter) {
+
+  // quarter like "2026Q1"
+
+  // Page uses: year header "2026" and quarter label "Q1"
+
+  const m = String(quarter || "").match(/^(\d{4})Q([1-4])$/);
+
+  if (!m) return null;
+
+  return { year: m[1], qLabel: `Q${m[2]}` };
+
+}
+
+async function fetchPdfText(url) {
+
+  const r = await fetch(url);
+
+  if (!r.ok) throw new Error(`Failed to download PDF (${r.status}) from ${url}`);
+
+
+
+  const arrayBuffer = await r.arrayBuffer();
+
+  const buffer = Buffer.from(arrayBuffer);
+
+
+
+  const parsed = await pdfParse(buffer);
+
+  return (parsed?.text || "").trim();
+
+}
+
+async function findUtiTranscriptPdfUrlForQuarter(quarter) {
+
+  const labels = quarterToUtiLabels(quarter);
+
+  if (!labels) return "";
+
+
+
+  const r = await fetch(UTI_QUARTERLY_REPORTS_URL);
+
+  if (!r.ok) throw new Error(`Failed to fetch UTI quarterly reports (${r.status})`);
+
+
+
+  const html = await r.text();
+
+  const $ = cheerio.load(html);
+
+
+
+  // Strategy:
+
+  // - Find the year header element that contains the year (e.g. "2026")
+
+  // - From there, find the block that contains the quarter label (e.g. "Q1")
+
+  // - Within that quarter block, find the "Transcript:" label and the next <a> link (PDF)
+
+  //
+
+  // This is resilient to icon-only links because we anchor on the visible "Transcript:" text.
+
+  let pdfUrl = "";
+
+
+
+  // Find any element that exactly matches the year label
+
+  const yearNodes = $(`*:contains("${labels.year}")`).filter((_, el) => {
+
+    const t = $(el).text().trim();
+
+    return t === labels.year;
+
+  });
+
+
+
+  // If we can't find the year node cleanly, just search the whole page for quarter blocks.
+
+  const searchRoots = yearNodes.length ? yearNodes.toArray().map(el => $(el).parent()) : [$.root()];
+
+
+
+  for (const root of searchRoots) {
+
+    // Find a block that contains the quarter label (e.g. "Q1")
+
+    const quarterCandidates = root.find(`*:contains("${labels.qLabel}")`).filter((_, el) => {
+
+      return $(el).text().trim() === labels.qLabel;
+
+    });
+
+
+
+    for (const qEl of quarterCandidates.toArray()) {
+
+      // Walk up a bit to capture the whole quarter section
+
+      const section = $(qEl).closest("li, ul, div").parent();
+
+      const transcriptLabel = section.find(`*:contains("Transcript:")`).first();
+
+      if (!transcriptLabel.length) continue;
+
+
+
+      // Transcript link is usually near that label in the same section
+
+      const link = transcriptLabel.parent().find("a").first();
+
+      if (!link.length) continue;
+
+
+
+      const href = link.attr("href") || "";
+
+      if (!href) continue;
+
+
+
+      // Make absolute if needed
+
+      try {
+
+        pdfUrl = new URL(href, UTI_QUARTERLY_REPORTS_URL).toString();
+
+      } catch {
+
+        pdfUrl = href;
+
+      }
+
+
+
+      // We expect a PDF
+
+      if (pdfUrl.toLowerCase().includes(".pdf")) return pdfUrl;
+
+      // Sometimes it could be a redirect page that then serves a PDF; still return it.
+
+      return pdfUrl;
+
+    }
+
+  }
+
+
+
+  return "";
+
+}
+
+
+
+async function fetchUtiTranscriptFallback(quarter) {
+
+  const pdfUrl = await findUtiTranscriptPdfUrlForQuarter(quarter);
+
+  if (!pdfUrl) return "";
+
+  return await fetchPdfText(pdfUrl);
+
+}
 
 function toMarkdown(summary) {
 
@@ -569,21 +747,31 @@ app.get("/summary", requireActionKey, async (req, res) => {
 
     const av = await fetchAlphaVantageTranscript(symbol, quarter);
 
-    const transcriptText = pluckTranscriptText(av);
+let transcriptText = pluckTranscriptText(av);
 
 
 
-    if (!transcriptText) {
+// Automatic UTI fallback to IR transcript PDF
 
-      return res.status(404).json({
+if (!transcriptText && symbol === "UTI") {
 
-        error: "No transcript text found in Alpha Vantage payload for this symbol/quarter.",
+  transcriptText = await fetchUtiTranscriptFallback(quarter);
 
-        hint: "Try a different quarter, or confirm Alpha Vantage coverage for this company."
+}
 
-      });
 
-    }
+
+if (!transcriptText) {
+
+  return res.status(404).json({
+
+    error: "No transcript text found in Alpha Vantage payload for this symbol/quarter.",
+
+    hint: "Try a different quarter, or confirm coverage for this company."
+
+  });
+
+}
 
 
 
