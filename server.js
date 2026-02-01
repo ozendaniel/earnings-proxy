@@ -128,7 +128,21 @@ async function fetchAlphaVantageTranscript(symbol, quarter) {
 
 }
 
+function isUsableTranscriptText(t) {
 
+  const s = String(t || "").trim();
+
+  if (!s) return false;
+
+  if (s.length < 500) return false; // too short to be a real transcript
+
+  const lower = s.toLowerCase();
+
+  if (lower.includes("not available") || lower.includes("no transcript") || lower.includes("placeholder")) return false;
+
+  return true;
+
+}
 
 function pluckTranscriptText(avPayload) {
 
@@ -739,9 +753,15 @@ app.get("/summary", requireActionKey, async (req, res) => {
 
     const cacheKey = `${symbol}:${quarter}`;
 
-    const cached = cacheGet(cacheKey);
+const force = String(req.query.force || "").trim() === "1";
 
-    if (cached) return res.json(cached);
+if (!force) {
+
+  const cached = cacheGet(cacheKey);
+
+  if (cached) return res.json(cached);
+
+}
 
 
 
@@ -749,9 +769,25 @@ app.get("/summary", requireActionKey, async (req, res) => {
 
 let transcriptText = pluckTranscriptText(av);
 
-transcriptText = String(transcriptText || "");    
+transcriptText = String(transcriptText || "");
 
-let transcriptSource = "alphavantage";    
+let transcriptSource = "alphavantage";
+
+if (symbol === "UTI" && !isUsableTranscriptText(transcriptText)) {
+
+  transcriptText = await fetchUtiTranscriptFallback(quarter);
+
+  transcriptText = String(transcriptText || "");
+
+  if (isUsableTranscriptText(transcriptText)) transcriptSource = "uti_ir_pdf";
+
+} 
+
+  if (!isUsableTranscriptText(transcriptText)) {
+
+  return res.status(404).json({ error: "Transcript not found or unusable." });
+
+}
 
 
 
