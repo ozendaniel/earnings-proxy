@@ -779,23 +779,28 @@ let transcriptText = pluckTranscriptText(av);
 transcriptText = String(transcriptText || "");
 
 let transcriptSource = "alphavantage";
+
 let pdfUrlUsed = null;
 
-if (symbol === "UTI" && !isUsableTranscriptText(transcriptText)) {
+if (symbol === "UTI") {
 
-  pdfUrlUsed = (await findUtiTranscriptPdfUrlForQuarter(quarter)) || UTI_KNOWN_PDF[quarter] || null;
+// Prefer UTI IR transcript PDF (more reliable than Alpha Vantage for UTI)
 
-  if (pdfUrlUsed) {
+pdfUrlUsed = (await findUtiTranscriptPdfUrlForQuarter(quarter)) || UTI_KNOWN_PDF[quarter] || null;
 
-    transcriptText = await fetchPdfText(pdfUrlUsed);
+if (pdfUrlUsed) {
 
-    transcriptText = String(transcriptText || "");
+const pdfText = await fetchPdfText(pdfUrlUsed);
 
-    if (isUsableTranscriptText(transcriptText)) transcriptSource = "uti_ir_pdf";
+if (isUsableTranscriptText(pdfText)) {
 
-  }
+transcriptText = String(pdfText || "");
 
-} 
+transcriptSource = "uti_ir_pdf";
+
+}
+
+}
 
   if (!isUsableTranscriptText(transcriptText)) {
 
@@ -821,7 +826,13 @@ if (symbol === "UTI" && !isUsableTranscriptText(transcriptText)) {
 
   transcriptSource,
 
-  ...(debug && symbol === "UTI" ? { utiTranscriptPdfUrl: pdfUrlUsed } : {}),
+  ...(debug && symbol === "UTI" ? {
+
+utiTranscriptPdfUrl: pdfUrlUsed,
+
+transcriptLen: String(transcriptText || "").length
+
+} : {}),
 
   markdown,
 
