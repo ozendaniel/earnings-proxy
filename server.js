@@ -749,19 +749,23 @@ app.get("/summary", requireActionKey, async (req, res) => {
 
 let transcriptText = pluckTranscriptText(av);
 
+let transcriptSource = "alphavantage";    
+
 
 
 // Automatic UTI fallback to IR transcript PDF
 
-if (!transcriptText && symbol === "UTI") {
+if (symbol === "UTI" && (!transcriptText || !transcriptText.trim())) {
 
   transcriptText = await fetchUtiTranscriptFallback(quarter);
+
+  if (transcriptText && transcriptText.trim()) transcriptSource = "uti_ir_pdf";
 
 }
 
 
 
-if (!transcriptText) {
+if (!transcriptText || !transcriptText.trim()) {
 
   return res.status(404).json({
 
@@ -781,7 +785,7 @@ if (!transcriptText) {
 
 
 
-    const payload = { symbol, quarter, markdown, summary };
+    const payload = { symbol, quarter, transcriptSource, markdown, summary };
 
     cacheSet(cacheKey, payload);
 
