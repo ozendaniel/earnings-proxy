@@ -166,6 +166,26 @@ function toMarkdown(summary) {
 
   lines.push("");
 
+  lines.push("### KPIs");
+
+if (!summary.kpis || summary.kpis.length === 0) {
+
+  lines.push("- (no KPIs extracted)");
+
+} else {
+
+  for (const k of summary.kpis.slice(0, 12)) {
+
+    lines.push(`- **${k.kpi}:** ${k.value} (${k.period}; ${k.comparison})`);
+
+    lines.push(`  - Evidence: “${k.evidence_quote}”`);
+
+  }
+
+}
+
+lines.push("");
+
   lines.push("### Key numbers");
 
   if (summary.key_numbers.length === 0) {
@@ -309,6 +329,36 @@ async function makeStructuredSummary({ symbol, quarter, transcriptText }) {
 
         },
 
+        kpis: {
+
+  type: "array",
+
+  items: {
+
+    type: "object",
+
+    additionalProperties: false,
+
+    properties: {
+
+      kpi: { type: "string" },
+
+      value: { type: "string" },
+
+      period: { type: "string" },
+
+      comparison: { type: "string" },
+
+      evidence_quote: { type: "string" }
+
+    },
+
+    required: ["kpi", "value", "period", "comparison", "evidence_quote"]
+
+  }
+
+},
+
         guidance: { type: "array", items: { type: "string" } },
 
         themes: {
@@ -381,6 +431,8 @@ async function makeStructuredSummary({ symbol, quarter, transcriptText }) {
 
         "key_numbers",
 
+        "kpis",
+
         "guidance",
 
         "themes",
@@ -421,7 +473,9 @@ async function makeStructuredSummary({ symbol, quarter, transcriptText }) {
 
           "Evidence quotes must be verbatim and <= 25 words. " +
 
-          "If you cannot find a requested item, return an empty array or a cautious statement."
+          "KPIs: always include a dedicated KPIs list. If a KPI is not mentioned, include it with value='Not mentioned', period='Not mentioned', comparison='Not mentioned', evidence_quote='Not mentioned'. " +
+
+          "Target at least 11 KPIs when possible (e.g., Revenue, EPS, Gross margin, Operating margin, FCF, Segment/Cloud metric, Guidance, Buybacks/Capital return, Customer growth, Churn, Average Price)."
 
       },
 
