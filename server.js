@@ -170,6 +170,11 @@ function pluckTranscriptText(avPayload) {
 
 const UTI_QUARTERLY_REPORTS_URL = "https://investor.uti.edu/quarterly-reports";
 
+const UTI_KNOWN_PDF = {
+  "2025Q3": "https://filecache.investorroom.com/mr5ir_uti/763/Universal%20Technical%20Institute%2C%20Inc.%28UTI-US%29%20-%20%20Q3%202025%20Earnings%20Call.pdf",
+  "2025Q2": "https://filecache.investorroom.com/mr5ir_uti/757/UTI_Q2_2025_Earnings_Call_Transcript.pdf"
+};
+
 
 
 function quarterToUtiLabels(quarter) {
@@ -754,6 +759,8 @@ app.get("/summary", requireActionKey, async (req, res) => {
     const cacheKey = `${symbol}:${quarter}`;
 
 const force = String(req.query.force || "").trim() === "1";
+const debug = String(req.query.debug || "").trim() === "1";
+
 
 if (!force) {
 
@@ -772,14 +779,21 @@ let transcriptText = pluckTranscriptText(av);
 transcriptText = String(transcriptText || "");
 
 let transcriptSource = "alphavantage";
+let pdfUrlUsed = null;
 
 if (symbol === "UTI" && !isUsableTranscriptText(transcriptText)) {
 
-  transcriptText = await fetchUtiTranscriptFallback(quarter);
+  pdfUrlUsed = (await findUtiTranscriptPdfUrlForQuarter(quarter)) || UTI_KNOWN_PDF[quarter] || null;
 
-  transcriptText = String(transcriptText || "");
+  if (pdfUrlUsed) {
 
-  if (isUsableTranscriptText(transcriptText)) transcriptSource = "uti_ir_pdf";
+    transcriptText = await fetchPdfText(pdfUrlUsed);
+
+    transcriptText = String(transcriptText || "");
+
+    if (isUsableTranscriptText(transcriptText)) transcriptSource = "uti_ir_pdf";
+
+  }
 
 } 
 
@@ -791,30 +805,6 @@ if (symbol === "UTI" && !isUsableTranscriptText(transcriptText)) {
 
 
 
-// Automatic UTI fallback to IR transcript PDF
-
-if (symbol === "UTI" && (!transcriptText || !transcriptText.trim())) {
-
-  transcriptText = await fetchUtiTranscriptFallback(quarter);
-
-  if (transcriptText && transcriptText.trim()) transcriptSource = "uti_ir_pdf";
-
-}
-
-
-
-if (!transcriptText || !transcriptText.trim()) {
-
-  return res.status(404).json({
-
-    error: "No transcript text found in Alpha Vantage payload for this symbol/quarter.",
-
-    hint: "Try a different quarter, or confirm coverage for this company."
-
-  });
-
-}
-
 
 
     const summary = await makeStructuredSummary({ symbol, quarter, transcriptText });
@@ -823,7 +813,21 @@ if (!transcriptText || !transcriptText.trim()) {
 
 
 
-    const payload = { symbol, quarter, transcriptSource, markdown, summary };
+    const payload = {
+
+  symbol,
+
+  quarter,
+
+  transcriptSource,
+
+  ...(debug && symbol === "UTI" ? { utiTranscriptPdfUrl: pdfUrlUsed } : {}),
+
+  markdown,
+
+  summary
+
+};
 
     cacheSet(cacheKey, payload);
 
