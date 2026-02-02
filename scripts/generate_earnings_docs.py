@@ -155,7 +155,7 @@ def fetch_summary(
             last_err = e
             if attempt < retries:
                 sleep_s = 2 ** attempt
-                print(f"Retrying {symbol} {quarter} in {sleep_s}s بسبب: {e}")
+                print(f"Retrying {symbol} {quarter} in {sleep_s}s because: {e}")
                 time.sleep(sleep_s)
             else:
                 break
